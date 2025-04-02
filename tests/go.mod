@@ -1,8 +1,9 @@
 module github.com/yourusername/secure-microservices-platform/tests
 
-go 1.20
+go 1.21
 
 require (
+	k8s.io/api v0.28.4
 	k8s.io/apimachinery v0.28.4
 	k8s.io/client-go v0.28.4
 )

@@ -22,13 +22,32 @@ terraform {
 }
 
 provider "kubernetes" {
-  config_path = "~/.kube/config"
+  config_path    = "~/.kube/config"
+  config_context = var.kubernetes_context
 }
 
 provider "helm" {
   kubernetes {
-    config_path = "~/.kube/config"
+    config_path    = "~/.kube/config"
+    config_context = var.kubernetes_context
   }
+}
+
+provider "vault" {
+  address = var.vault_addr
+}
+
+# Variables
+variable "kubernetes_context" {
+  type        = string
+  description = "Kubernetes context to use"
+  default     = ""
+}
+
+variable "vault_addr" {
+  type        = string
+  description = "Vault server address"
+  default     = "http://vault.vault.svc.cluster.local:8200"
 }
 
 # Create namespaces for different components

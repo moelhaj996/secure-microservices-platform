@@ -15,8 +15,12 @@ jobs:
   security-scan:
     name: Security Scanning
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -28,12 +32,22 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Run tfsec
-        uses: aquasecurity/tfsec-sarif-action@v0.1.0
+        uses: aquasecurity/tfsec-sarif-action@v0.1.4
         with:
           sarif_file: tfsec.sarif
 
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:go"
+
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
 
@@ -41,15 +55,17 @@ jobs:
     name: Infrastructure Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
       - name: Terraform Format
-        run: terraform fmt -check -recursive
+        run: |
+          cd infrastructure
+          terraform fmt -check -recursive
 
       - name: Terraform Init
         run: |
@@ -65,7 +81,7 @@ jobs:
     name: Helm Chart Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Helm
         uses: azure/setup-helm@v3
@@ -85,12 +101,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: [infrastructure-test, helm-test]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version: '1.21'
+          check-latest: true
+
+      - name: Install dependencies
+        run: |
+          cd tests
+          go mod download
 
       - name: Run Integration Tests
         run: |
@@ -104,10 +126,10 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     environment: staging
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -119,8 +141,10 @@ jobs:
           version: ${{ env.KUBECTL_VERSION }}
 
       - name: Deploy to Staging
+        env:
+          ENVIRONMENT: staging
         run: |
-          ./scripts/deploy.sh staging
+          ./scripts/deploy.sh $ENVIRONMENT
 
   deploy-production:
     name: Deploy to Production
@@ -131,10 +155,10 @@ jobs:
       name: production
       url: https://api.yourdomain.com
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -146,5 +170,7 @@ jobs:
           version: ${{ env.KUBECTL_VERSION }}
 
       - name: Deploy to Production
+        env:
+          ENVIRONMENT: production
         run: |
-          ./scripts/deploy.sh production 
+          ./scripts/deploy.sh $ENVIRONMENT 
