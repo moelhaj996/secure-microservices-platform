@@ -5,169 +5,66 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-
-permissions:
-  contents: read
-  security-events: write
-  actions: read
-  id-token: write
+  workflow_dispatch:
 
 env:
-  TERRAFORM_VERSION: "1.0.0"
-  KUBECTL_VERSION: "1.27.0"
-  HELM_VERSION: "3.8.0"
-  AWS_REGION: "us-west-2"
-  DOCKER_USERNAME: "mohammede43"
-  EKS_CLUSTER_NAME: "secure-microservices-cluster"
-  CI: "true"
+  AWS_REGION: us-west-2
   AWS_ACCESS_KEY_ID: "AKIA2UC3D563YGS5T5OS"
-  # Do NOT include AWS_SECRET_ACCESS_KEY here - it should be set as a GitHub secret
+  ECR_REPOSITORY: secure-microservices
+  EKS_CLUSTER: secure-microservices-cluster
 
 jobs:
-  security-scan:
+  security-scanning:
     name: Security Scanning
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.18.0
         with:
           scan-type: 'fs'
           ignore-unfixed: true
-          format: 'sarif'
-          output: 'trivy-results.sarif'
+          format: 'table'
           severity: 'CRITICAL,HIGH'
 
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-action@master
-        with:
-          soft_fail: true
-
-  infrastructure-test:
-    name: Infrastructure Tests
+  build-and-deploy:
+    name: Build and Deploy
+    needs: security-scanning
     runs-on: ubuntu-latest
-    needs: security-scan
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Format
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Init
-        run: |
-          cd infrastructure
-          terraform init -backend=false
-
-      - name: Terraform Validate
-        run: |
-          cd infrastructure
-          terraform validate
-
-  build-and-push:
-    name: Build and Push Docker Images
-    runs-on: ubuntu-latest
-    needs: [security-scan, infrastructure-test]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-
-      - name: Build and push API service
-        uses: docker/build-push-action@v5
-        with:
-          context: ./services/api-service
-          push: true
-          tags: ${{ env.DOCKER_USERNAME }}/api-service:${{ github.sha }}
-
-  deploy-staging:
-    name: Deploy to Staging
-    needs: [build-and-push]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: ${{ env.KUBECTL_VERSION }}
-
-      - name: Deploy to Staging
+      - name: Build, tag, and push image to Amazon ECR
         env:
-          ENVIRONMENT: staging
-          DOCKER_TAG: ${{ github.sha }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          ./scripts/deploy.sh $ENVIRONMENT
-
-  deploy-production:
-    name: Deploy to Production
-    needs: [build-and-push]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-      url: https://api.yourdomain.com
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
       - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: ${{ env.KUBECTL_VERSION }}
-
-      - name: Deploy to Production
-        env:
-          ENVIRONMENT: production
-          DOCKER_TAG: ${{ github.sha }}
         run: |
-          ./scripts/deploy.sh $ENVIRONMENT 
+          aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+
+      - name: Deploy to EKS
+        run: |
+          chmod +x ./scripts/deploy.sh
+          ./scripts/deploy.sh 
