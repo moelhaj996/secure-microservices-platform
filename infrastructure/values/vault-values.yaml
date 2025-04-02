@@ -7,13 +7,49 @@ server:
     enabled: true
     replicas: 3
   
+    # Raft Storage Backend
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+        
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+        }
+        
+        storage "raft" {
+          path = "/vault/data"
+          retry_join {
+            leader_api_addr = "http://vault-0.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-1.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-2.vault-internal:8200"
+          }
+        }
+        
+        service_registration "kubernetes" {}
+        
+        seal "transit" {
+          address = "http://vault.vault.svc:8200"
+          disable_renewal = "false"
+          key_name = "autounseal"
+          mount_path = "transit/"
+          tls_skip_verify = "true"
+        }
+  
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "250m"
+      memory: 256Mi
+      cpu: 250m
     limits:
-      memory: "512Mi"
-      cpu: "500m"
+      memory: 512Mi
+      cpu: 500m
 
   extraEnvironmentVars:
     VAULT_ADDR: "https://127.0.0.1:8200"
@@ -40,6 +76,7 @@ server:
 
   serviceAccount:
     create: true
+    name: "vault"
     annotations: {}
 
   service:
@@ -47,19 +84,44 @@ server:
 
   dataStorage:
     enabled: true
-    size: "10Gi"
-    storageClass: "standard"
-    accessMode: "ReadWriteOnce"
+    size: 10Gi
+    storageClass: null
+    accessMode: ReadWriteOnce
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 100
+    runAsGroup: 1000
+    fsGroup: 1000
 
 ui:
   enabled: true
   serviceType: "ClusterIP"
+  serviceNodePort: null
   externalPort: 8200
 
 injector:
   enabled: true
-  replicas: 2
+  replicas: 1
   
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 100m
+      
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    fsGroup: 65534
+
+# Vault CSI Provider
+csi:
+  enabled: true
+
   metrics:
     enabled: true
 
@@ -71,14 +133,6 @@ injector:
 
   webhookAnnotations:
     "security.istio.io/tlsMode": "istio"
-
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "250m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
 
   affinity:
     podAntiAffinity:

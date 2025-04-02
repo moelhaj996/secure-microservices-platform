@@ -175,4 +175,125 @@ serverFiles:
               severity: warning
             annotations:
               description: Pod {{ $labels.namespace }}/{{ $labels.pod }} is using high memory
-              summary: High memory usage detected 
+              summary: High memory usage detected
+
+server:
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+  
+  persistentVolume:
+    enabled: true
+    size: 8Gi
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  securityContext:
+    runAsUser: 65534
+    runAsNonRoot: true
+    runAsGroup: 65534
+    fsGroup: 65534
+  
+  service:
+    type: ClusterIP
+  
+  retention: 15d
+  
+  # Configure Prometheus alerts
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager.monitoring.svc:9093
+
+# Enable Prometheus alerts
+alertmanager:
+  enabled: true
+  persistentVolume:
+    enabled: true
+    size: 2Gi
+  
+  resources:
+    limits:
+      cpu: 100m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+  
+  securityContext:
+    runAsUser: 65534
+    runAsNonRoot: true
+    runAsGroup: 65534
+    fsGroup: 65534
+
+# Enable node exporter for node metrics
+nodeExporter:
+  enabled: true
+  hostRootfs: false
+  resources:
+    limits:
+      cpu: 200m
+      memory: 50Mi
+    requests:
+      cpu: 100m
+      memory: 30Mi
+
+# Enable kube-state-metrics for Kubernetes object metrics
+kubeStateMetrics:
+  enabled: true
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# Enable Pushgateway for batch jobs
+pushgateway:
+  enabled: true
+  resources:
+    limits:
+      cpu: 100m
+      memory: 64Mi
+    requests:
+      cpu: 50m
+      memory: 32Mi
+
+# Service monitors for auto-discovery
+serviceMonitors:
+  - name: istio
+    selector:
+      matchLabels:
+        app: istiod
+    namespaceSelector:
+      matchNames:
+        - istio-system
+    endpoints:
+      - port: http-monitoring
+        interval: 15s
+  
+  - name: vault
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: vault
+    namespaceSelector:
+      matchNames:
+        - vault
+    endpoints:
+      - port: http
+        path: /v1/sys/metrics
+        interval: 15s
+        params:
+          format: ['prometheus']
+        bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+# Network policies
+networkPolicy:
+  enabled: true 

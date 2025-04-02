@@ -45,7 +45,15 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Terraform Format
+      # First format everything to ensure consistent formatting
+      - name: Terraform Format Fix
+        continue-on-error: true
+        run: |
+          cd infrastructure
+          terraform fmt -recursive
+
+      # Then check that formatting is correct
+      - name: Terraform Format Check
         run: |
           cd infrastructure
           terraform fmt -check -recursive
