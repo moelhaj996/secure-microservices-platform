@@ -1,0 +1,56 @@
+pilot:
+  enabled: true
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2048Mi
+    limits:
+      cpu: 1000m
+      memory: 4096Mi
+
+global:
+  proxy:
+    privileged: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  
+  mtls:
+    enabled: true
+    auto: true
+
+meshConfig:
+  enableTracing: true
+  accessLogFile: /dev/stdout
+  enableAutoMtls: true
+  defaultConfig:
+    tracing:
+      sampling: 100
+      zipkin:
+        address: zipkin.monitoring:9411
+    proxyMetadata:
+      ISTIO_META_DNS_CAPTURE: "true"
+      ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+
+sidecarInjectorWebhook:
+  enableNamespacesByDefault: false
+  rewriteAppHTTPProbe: true
+
+pilot:
+  autoscaleEnabled: true
+  autoscaleMin: 2
+  autoscaleMax: 5
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2048Mi
+    limits:
+      cpu: 1000m
+      memory: 4096Mi
+  env:
+    PILOT_ENABLE_STATUS: "true"
+    PILOT_TRACE_SAMPLING: "100" 

@@ -1,11 +1,24 @@
+global:
+  enabled: true
+  tlsDisable: false
+
 server:
   ha:
     enabled: true
     replicas: 3
   
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
   extraEnvironmentVars:
-    VAULT_ADDR: "http://127.0.0.1:8200"
-    VAULT_API_ADDR: "http://$(POD_IP):8200"
+    VAULT_ADDR: "https://127.0.0.1:8200"
+    VAULT_API_ADDR: "https://$(POD_IP):8200"
+    VAULT_CLUSTER_ADDR: "https://$(POD_IP):8201"
     
   affinity:
     podAntiAffinity:
@@ -18,24 +31,29 @@ server:
 
   auditStorage:
     enabled: true
-    size: 10Gi
+    size: "10Gi"
     storageClass: "standard"
+    accessMode: "ReadWriteOnce"
 
   standalone:
     enabled: false
+
+  serviceAccount:
+    create: true
+    annotations: {}
 
   service:
     enabled: true
 
   dataStorage:
     enabled: true
-    size: 10Gi
+    size: "10Gi"
     storageClass: "standard"
-    accessMode: ReadWriteOnce
+    accessMode: "ReadWriteOnce"
 
 ui:
   enabled: true
-  serviceType: ClusterIP
+  serviceType: "ClusterIP"
   externalPort: 8200
 
 injector:
@@ -69,4 +87,49 @@ injector:
             matchLabels:
               app.kubernetes.io/name: vault-agent-injector
               app.kubernetes.io/instance: vault
-          topologyKey: kubernetes.io/hostname 
+          topologyKey: kubernetes.io/hostname
+
+  extraVolumes:
+    - type: secret
+      name: vault-tls
+      path: /vault/tls
+
+  config: |
+    ui = true
+    
+    listener "tcp" {
+      tls_disable = 0
+      address = "[::]:8200"
+      cluster_address = "[::]:8201"
+      tls_cert_file = "/vault/tls/tls.crt"
+      tls_key_file  = "/vault/tls/tls.key"
+      tls_client_ca_file = "/vault/tls/ca.crt"
+    }
+
+    storage "raft" {
+      path = "/vault/data"
+      retry_join {
+        leader_api_addr = "https://vault-0.vault-internal:8200"
+      }
+      retry_join {
+        leader_api_addr = "https://vault-1.vault-internal:8200"
+      }
+      retry_join {
+        leader_api_addr = "https://vault-2.vault-internal:8200"
+      }
+    }
+
+    service_registration "kubernetes" {}
+
+    seal "transit" {
+      address = "https://vault.vault.svc:8200"
+      token = "s.token"
+      disable_renewal = "false"
+      key_name = "autounseal"
+      mount_path = "transit/"
+    }
+
+    telemetry {
+      prometheus_retention_time = "30s"
+      disable_hostname = true
+    } 

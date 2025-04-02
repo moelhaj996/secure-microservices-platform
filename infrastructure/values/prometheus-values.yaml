@@ -113,4 +113,66 @@ alertmanager:
       cpu: 100m
     limits:
       memory: 256Mi
-      cpu: 200m 
+      cpu: 200m
+
+pushgateway:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+nodeExporter:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+kubeStateMetrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+serverFiles:
+  alerting_rules.yml:
+    groups:
+      - name: kubernetes
+        rules:
+          - alert: KubernetesPodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total[15m]) * 60 * 5 > 0
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              description: Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping
+              summary: Pod is crash looping
+
+          - alert: KubernetesHighCPUUsage
+            expr: sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod, namespace) > 0.8
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              description: Pod {{ $labels.namespace }}/{{ $labels.pod }} is using high CPU
+              summary: High CPU usage detected
+
+          - alert: KubernetesHighMemoryUsage
+            expr: sum(container_memory_usage_bytes{container!=""}) by (pod, namespace) / sum(container_spec_memory_limit_bytes{container!=""}) by (pod, namespace) * 100 > 85
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              description: Pod {{ $labels.namespace }}/{{ $labels.pod }} is using high memory
+              summary: High memory usage detected 
