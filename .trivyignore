@@ -1,3 +1,10 @@
+# .trivyignore file
+# Ignore CVEs that are false positives or cannot be fixed yet
+
+# Example format:
+# CVE-2022-12345
+# CVE-2022-23456
+
 # Ignore specific CVEs that are false positives or not applicable
 # Format: CVE-YYYY-XXXXXX
 
