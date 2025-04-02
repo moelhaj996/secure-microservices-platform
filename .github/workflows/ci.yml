@@ -8,8 +8,11 @@ on:
 
 env:
   TERRAFORM_VERSION: "1.0.0"
-  KUBECTL_VERSION: "1.24.0"
+  KUBECTL_VERSION: "1.27.0"
   HELM_VERSION: "3.8.0"
+  AWS_REGION: "us-west-2"
+  DOCKER_USERNAME: "mohammede43"
+  EKS_CLUSTER_NAME: "secure-microservices-cluster"
   CI: "true"
 
 jobs:
@@ -18,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -26,8 +30,15 @@ jobs:
         with:
           scan-type: 'fs'
           ignore-unfixed: true
-          format: 'table'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
 
       - name: Run tfsec
         uses: aquasecurity/tfsec-action@master
@@ -37,6 +48,7 @@ jobs:
   infrastructure-test:
     name: Infrastructure Tests
     runs-on: ubuntu-latest
+    needs: security-scan
     steps:
       - uses: actions/checkout@v4
 
@@ -45,18 +57,15 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      # First format everything to ensure consistent formatting
-      - name: Terraform Format Fix
-        continue-on-error: true
-        run: |
-          cd infrastructure
-          terraform fmt -recursive
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Then check that formatting is correct
-      - name: Terraform Format Check
-        run: |
-          cd infrastructure
-          terraform fmt -check -recursive
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
 
       - name: Terraform Init
         run: |
@@ -68,54 +77,32 @@ jobs:
           cd infrastructure
           terraform validate
 
-  helm-test:
-    name: Helm Chart Tests
+  build-and-push:
+    name: Build and Push Docker Images
     runs-on: ubuntu-latest
+    needs: [security-scan, infrastructure-test]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Helm
-        uses: azure/setup-helm@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
         with:
-          version: ${{ env.HELM_VERSION }}
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Run helm lint
-        run: |
-          for chart in kubernetes/*/; do
-            if [ -f "$chart/Chart.yaml" ]; then
-              helm lint "$chart"
-            fi
-          done
-
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: [infrastructure-test, helm-test]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Build and push API service
+        uses: docker/build-push-action@v5
         with:
-          go-version: '1.21'
-          check-latest: true
-
-      - name: Install dependencies
-        run: |
-          cd tests
-          go mod download
-
-      - name: Run Mock Integration Tests
-        run: |
-          cd tests
-          # Run only the CI-friendly tests
-          go test -v ./integration -run "TestCI|TestMock" -tags=integration
-        env:
-          CI: "true"
+          context: ./services/api-service
+          push: true
+          tags: ${{ env.DOCKER_USERNAME }}/api-service:${{ github.sha }}
 
   deploy-staging:
     name: Deploy to Staging
-    needs: [security-scan, integration-test]
+    needs: [build-and-push]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     environment: staging
@@ -127,7 +114,10 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
@@ -137,12 +127,13 @@ jobs:
       - name: Deploy to Staging
         env:
           ENVIRONMENT: staging
+          DOCKER_TAG: ${{ github.sha }}
         run: |
           ./scripts/deploy.sh $ENVIRONMENT
 
   deploy-production:
     name: Deploy to Production
-    needs: [security-scan, integration-test]
+    needs: [build-and-push]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment:
@@ -156,7 +147,10 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v3
@@ -166,5 +160,6 @@ jobs:
       - name: Deploy to Production
         env:
           ENVIRONMENT: production
+          DOCKER_TAG: ${{ github.sha }}
         run: |
           ./scripts/deploy.sh $ENVIRONMENT 

@@ -14,25 +14,43 @@ terraform {
       source  = "hashicorp/vault"
       version = "~> 3.20.0"
     }
-  }
-
-  backend "local" {
-    path = "terraform.tfstate"
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
 }
 
+provider "aws" {
+  region = var.aws_region
+}
+
+# Use EKS cluster for Kubernetes and Helm providers
 provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kubernetes_context
+  host                   = module.eks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+  
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    command     = "aws"
+  }
 }
 
 provider "helm" {
   kubernetes {
-    config_path    = "~/.kube/config"
-    config_context = var.kubernetes_context
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+    
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+      command     = "aws"
+    }
   }
 }
 
+# We'll configure this after Vault is deployed
 provider "vault" {
   address = var.vault_addr
 }
@@ -50,108 +68,19 @@ variable "vault_addr" {
   default     = "http://vault.vault.svc.cluster.local:8200"
 }
 
-# Create namespaces for different components
-resource "kubernetes_namespace" "istio_system" {
-  metadata {
-    name = "istio-system"
-    labels = {
-      istio-injection = "disabled"
-    }
-  }
+# Output the EKS cluster name and endpoint for reference
+output "cluster_name" {
+  description = "The name of the EKS cluster"
+  value       = module.eks.cluster_name
 }
 
-resource "kubernetes_namespace" "monitoring" {
-  metadata {
-    name = "monitoring"
-    labels = {
-      istio-injection = "enabled"
-    }
-  }
+output "cluster_endpoint" {
+  description = "The endpoint for the EKS cluster"
+  value       = module.eks.cluster_endpoint
 }
 
-resource "kubernetes_namespace" "vault" {
-  metadata {
-    name = "vault"
-    labels = {
-      istio-injection = "enabled"
-    }
-  }
-}
-
-resource "kubernetes_namespace" "applications" {
-  metadata {
-    name = "applications"
-    labels = {
-      istio-injection = "enabled"
-    }
-  }
-}
-
-# Install Istio using Helm
-resource "helm_release" "istio_base" {
-  name       = "istio-base"
-  repository = "https://istio-release.storage.googleapis.com/charts"
-  chart      = "base"
-  namespace  = kubernetes_namespace.istio_system.metadata[0].name
-  version    = "1.20.0"
-
-  depends_on = [kubernetes_namespace.istio_system]
-}
-
-resource "helm_release" "istiod" {
-  name       = "istiod"
-  repository = "https://istio-release.storage.googleapis.com/charts"
-  chart      = "istiod"
-  namespace  = kubernetes_namespace.istio_system.metadata[0].name
-  version    = "1.20.0"
-
-  values = [
-    file("${path.module}/values/istiod-values.yaml")
-  ]
-
-  depends_on = [helm_release.istio_base]
-}
-
-# Install Prometheus and Grafana for monitoring
-resource "helm_release" "prometheus" {
-  name       = "prometheus"
-  repository = "https://prometheus-community.github.io/helm-charts"
-  chart      = "prometheus"
-  namespace  = kubernetes_namespace.monitoring.metadata[0].name
-  version    = "25.8.0"
-
-  values = [
-    file("${path.module}/values/prometheus-values.yaml")
-  ]
-
-  depends_on = [kubernetes_namespace.monitoring]
-}
-
-resource "helm_release" "grafana" {
-  name       = "grafana"
-  repository = "https://grafana.github.io/helm-charts"
-  chart      = "grafana"
-  namespace  = kubernetes_namespace.monitoring.metadata[0].name
-  version    = "7.0.11"
-
-  values = [
-    file("${path.module}/values/grafana-values.yaml")
-  ]
-
-  depends_on = [kubernetes_namespace.monitoring]
-}
-
-# Install HashiCorp Vault
-resource "helm_release" "vault" {
-  name       = "vault"
-  repository = "https://helm.releases.hashicorp.com"
-  chart      = "vault"
-  namespace  = kubernetes_namespace.vault.metadata[0].name
-  version    = "0.27.0"
-
-  values = [
-    file("${path.module}/values/vault-values.yaml")
-  ]
-
-  depends_on = [kubernetes_namespace.vault]
+output "cluster_certificate_authority_data" {
+  description = "The base64 encoded certificate data required to communicate with the cluster"
+  value       = module.eks.cluster_certificate_authority_data
+  sensitive   = true
 } 
