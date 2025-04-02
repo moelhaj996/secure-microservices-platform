@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-service
+  namespace: services
+  labels:
+    app: api-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: services
+  labels:
+    app: api-service
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app: api-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-service
+  namespace: services
+  labels:
+    app: api-service
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-service
+  template:
+    metadata:
+      labels:
+        app: api-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "api-service"
+        vault.hashicorp.com/agent-inject-secret-config: "secret/data/api-service/config"
+    spec:
+      serviceAccountName: api-service
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+        - name: api-service
+          image: api-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: api-service
+  namespace: services
+spec:
+  hosts:
+    - api-service
+  gateways:
+    - mesh
+  http:
+    - route:
+        - destination:
+            host: api-service
+            port:
+              number: 8080
+      timeout: 5s
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: api-service
+  namespace: services
+spec:
+  selector:
+    matchLabels:
+      app: api-service
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/services/sa/*"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/health", "/metrics"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: api-service
+  namespace: services
+spec:
+  selector:
+    matchLabels:
+      app: api-service
+  mtls:
+    mode: STRICT 

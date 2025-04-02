@@ -1,0 +1,72 @@
+server:
+  ha:
+    enabled: true
+    replicas: 3
+  
+  extraEnvironmentVars:
+    VAULT_ADDR: "http://127.0.0.1:8200"
+    VAULT_API_ADDR: "http://$(POD_IP):8200"
+    
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+              app.kubernetes.io/instance: vault
+          topologyKey: kubernetes.io/hostname
+
+  auditStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: "standard"
+
+  standalone:
+    enabled: false
+
+  service:
+    enabled: true
+
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: "standard"
+    accessMode: ReadWriteOnce
+
+ui:
+  enabled: true
+  serviceType: ClusterIP
+  externalPort: 8200
+
+injector:
+  enabled: true
+  replicas: 2
+  
+  metrics:
+    enabled: true
+
+  failurePolicy: Fail
+
+  authPath: "auth/kubernetes"
+
+  logLevel: "info"
+
+  webhookAnnotations:
+    "security.istio.io/tlsMode": "istio"
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault-agent-injector
+              app.kubernetes.io/instance: vault
+          topologyKey: kubernetes.io/hostname 
