@@ -71,31 +71,23 @@ resource "helm_release" "istiod" {
   depends_on = [helm_release.istio_base]
 }
 
-# Install Prometheus and Grafana for monitoring
-resource "helm_release" "prometheus" {
+# Install Prometheus and Grafana for monitoring using kube-prometheus-stack
+resource "helm_release" "prometheus_stack" {
   name       = "prometheus"
   repository = "https://prometheus-community.github.io/helm-charts"
-  chart      = "prometheus"
+  chart      = "kube-prometheus-stack"
   namespace  = kubernetes_namespace.monitoring.metadata[0].name
-  version    = "25.8.0"
+  version    = "70.4.1"
 
-  values = [
-    file("${path.module}/values/prometheus-values.yaml")
-  ]
+  set {
+    name  = "prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues"
+    value = "false"
+  }
 
-  depends_on = [kubernetes_namespace.monitoring]
-}
-
-resource "helm_release" "grafana" {
-  name       = "grafana"
-  repository = "https://grafana.github.io/helm-charts"
-  chart      = "grafana"
-  namespace  = kubernetes_namespace.monitoring.metadata[0].name
-  version    = "7.0.11"
-
-  values = [
-    file("${path.module}/values/grafana-values.yaml")
-  ]
+  set {
+    name  = "prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues"
+    value = "false"
+  }
 
   depends_on = [kubernetes_namespace.monitoring]
 }
