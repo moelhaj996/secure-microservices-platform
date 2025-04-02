@@ -1,0 +1,8 @@
+# Ignore specific CVEs that are false positives or not applicable
+# Format: CVE-YYYY-XXXXXX
+
+# Example of ignored CVEs:
+# CVE-2021-XXXXX # Reason for ignoring
+# CVE-2022-XXXXX # Not applicable to our use case
+
+# Temporary exceptions (to be fixed in next sprint) 
