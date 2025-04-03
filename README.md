@@ -223,6 +223,25 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For enterprise support and custom implementations, please contact: support@yourdomain.com
 
+## Environment Configuration
+1. Copy the example environment file:
+```bash
+cp .env.example .env
+```
+
+2. Update the `.env` file with your AWS credentials and verify the following settings:
+```bash
+AWS_REGION=us-west-2            # Must be us-west-2 for this cluster
+AWS_DEFAULT_REGION=us-west-2    # Must be us-west-2 for this cluster
+EKS_CLUSTER=secure-microservices-cluster
+ECR_REPOSITORY=secure-microservices/api-service
+```
+
+3. Source the environment variables:
+```bash
+source .env
+```
+
 ## EKS Cluster Configuration
 - Cluster Name: secure-microservices-cluster
 - Region: us-west-2 (AWS Oregon)
