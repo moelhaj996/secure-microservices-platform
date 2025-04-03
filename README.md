@@ -242,6 +242,11 @@ ECR_REPOSITORY=secure-microservices/api-service
 source .env
 ```
 
+4. Use our setup script to properly configure kubeconfig:
+```bash
+./update-kubeconfig.sh
+```
+
 ## EKS Cluster Configuration
 - Cluster Name: secure-microservices-cluster
 - Region: us-west-2 (AWS Oregon)
