@@ -52,7 +52,7 @@ spec:
         fsGroup: 2000
       containers:
         - name: api-service
-          image: api-service:latest
+          image: 730335539127.dkr.ecr.us-east-1.amazonaws.com/secure-microservices/api-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
