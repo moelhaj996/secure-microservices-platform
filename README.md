@@ -225,13 +225,26 @@ For enterprise support and custom implementations, please contact: support@yourd
 
 ## EKS Cluster Configuration
 - Cluster Name: secure-microservices-cluster
-- Region: us-west-2
+- Region: us-west-2 (AWS Oregon)
 - AWS Account: 730335539127
 - Kubernetes Version: v1.27.16-eks
 
 ### Connect to Cluster
 ```bash
+# Important: Make sure to use us-west-2 region
 aws eks update-kubeconfig --name secure-microservices-cluster --region us-west-2
+```
+
+### Verify Connection
+```bash
+# Check nodes
+kubectl get nodes
+
+# Expected output:
+NAME                                       STATUS   ROLES    AGE   VERSION
+ip-10-0-1-208.us-west-2.compute.internal   Ready    <none>   9h    v1.27.16-eks-aeac579
+ip-10-0-2-47.us-west-2.compute.internal    Ready    <none>   9h    v1.27.16-eks-aeac579
+ip-10-0-3-122.us-west-2.compute.internal   Ready    <none>   9h    v1.27.16-eks-aeac579
 ```
 
 ## HashiCorp Vault Configuration
@@ -267,4 +280,11 @@ ip-10-0-3-122.us-west-2.compute.internal   Ready    <none>   9h    v1.27.16-eks-
 ```
 
 ## Security Notice
-⚠️ **Important**: All sensitive credentials and keys should be stored securely in a production environment. Consider using a secret manager or secure vault for these credentials. 
+⚠️ **Important**: All sensitive credentials and keys should be stored securely in a production environment. Consider using a secret manager or secure vault for these credentials.
+
+## Troubleshooting
+If you encounter connection issues:
+1. Verify you're using the correct region (us-west-2)
+2. Ensure your AWS credentials are properly configured
+3. Run `aws sts get-caller-identity` to verify your AWS identity
+4. Check your VPN/network connectivity to AWS us-west-2 region 
